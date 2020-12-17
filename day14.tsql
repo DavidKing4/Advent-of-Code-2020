@@ -1,0 +1,82 @@
+DROP VIEW import;
+DROP TABLE input;
+DROP TABLE memory;
+CREATE TABLE input
+(
+    id integer IDENTITY PRIMARY KEY,
+    op VARCHAR(40),
+    num VARCHAR(40)
+);
+CREATE TABLE memory
+(
+    addr INT UNIQUE,
+    val BIGINT
+);
+
+GO
+CREATE VIEW import
+WITH SCHEMABINDING
+AS
+SELECT
+    I.op,
+    I.num
+FROM dbo.input AS I;
+
+GO
+BULK INSERT import
+FROM "C:\Users\David King\Documents\AOC 2020\input14.txt"
+WITH
+(
+    CODEPAGE = '65001',
+    FIELDTERMINATOR = ' = ',
+    ROWTERMINATOR = '0x0A'
+);
+
+DECLARE @i INT = 0;
+DECLARE @j BIGINT = 0;
+DECLARE @c CHAR;
+DECLARE @x BIGINT = 2;
+DECLARE @p BIGINT;
+DECLARE @n INT = (SELECT COUNT(*) FROM input);
+DECLARE @addr INT;
+DECLARE @result BIGINT;
+DECLARE @mask VARCHAR(36);
+DECLARE @value INT;
+
+WHILE @i <= @n
+BEGIN
+    SET @mask = (SELECT TOP 1 num FROM input WHERE id = @i);
+    SET @i = @i + 1;
+    WHILE ((SELECT TOP 1 op FROM input WHERE id = @i) LIKE 'mem%')
+    BEGIN
+        SET @j = 0;
+        SET @result = 0;
+        SET @value = (SELECT TOP 1 num FROM input WHERE id = @i);
+        WHILE @j < 36
+        BEGIN
+            SET @p = POWER(@x, (@j));
+            SET @c = SUBSTRING(@mask, 36 - @j, 1);
+            IF (@c = 'x' AND (@value & @p) <> 0) OR @c = '1'
+            BEGIN
+                SET @result = @result + @p;
+            END;
+            SET @j = @j + 1;
+        END;
+        SET @addr = CAST((SELECT TOP 1 SUBSTRING(op, 5, LEN(op) - 5) FROM input WHERE id = @i) AS INT);
+        BEGIN TRY
+            INSERT INTO memory VALUES
+            (
+                @addr,
+                @result
+            )
+        END TRY
+        BEGIN CATCH
+            UPDATE memory
+            SET val = @result
+            WHERE addr = @addr;
+        END CATCH
+        SET @i = @i + 1;
+    END;
+END;
+
+SELECT SUM(val) FROM memory;
